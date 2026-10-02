@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作業報告書・写真台帳メーカー</title>
+<meta name="description" content="現場の写真を選んで一言を付けると、表紙つきのA4の報告書ができます。写真はこの端末の中だけで処理します。">
+<style>
+  :root {
+    --bg: #f6f6f7; --surface: #ffffff; --ink: #1c1c1e; --ink2: #48484d; --ink3: #66666d;
+    --line: #d6d6db; --line-strong: #85858d; --accent: #0b5aa6; --accent-ink: #ffffff;
+    --warn-bg: #fff4e0; --warn-line: #d9a54a; --warn-ink: #5e3700; --danger: #b3261e; --ok: #1b6b34;
+    --font: "Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --surface: #1e1e21; --ink: #f2f2f3; --ink2: #cbcbd0; --ink3: #a4a4ac;
+      --line: #3a3a40; --line-strong: #7d7d86; --accent: #8cbfff; --accent-ink: #0b1b2e;
+      --warn-bg: #3a2a10; --warn-line: #8a6a2a; --warn-ink: #ffdca8; --danger: #ff8f86; --ok: #7fd49a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 32px; }
+  h1 { font-size: 22px; line-height: 1.3; margin: 8px 0 8px; }
+  h2 { font-size: 17px; line-height: 1.4; margin: 0 0 8px; }
+  p { margin: 0 0 8px; }
+  .lead { color: var(--ink2); }
+  .note { font-size: 14px; color: var(--ink2); }
+  .msg { font-size: 14px; min-height: 1.6em; margin: 4px 0 0; }
+  .msg.err { color: var(--danger); font-weight: 700; }
+  .msg.ok { color: var(--ok); }
+  .notices { margin: 12px 0 16px; padding: 12px; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; color: var(--warn-ink); font-size: 14px; line-height: 1.6; }
+  .notices p { margin: 0 0 6px; } .notices p:last-child { margin-bottom: 0; }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 16px; font-size: 14px; }
+  .jump a { color: var(--accent); display: inline-flex; align-items: center; min-height: 44px; }
+  .cols { display: block; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 0 0 16px; }
+  label.fld { display: block; font-size: 14px; color: var(--ink2); margin: 0 0 12px; }
+  label.fld:last-child { margin-bottom: 0; }
+  label.fld .req { color: var(--danger); font-weight: 700; }
+  input[type=text], input[type=date], textarea, select {
+    display: block; width: 100%; min-height: 44px; margin-top: 4px; padding: 8px 10px; font: inherit; font-size: 16px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; }
+  textarea { resize: vertical; min-height: 88px; }
+  input.bad { border-color: var(--danger); border-width: 2px; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button, .btn { font: inherit; font-size: 16px; min-height: 44px; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+  button.primary, .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .stack > * { width: 100%; }
+  .pick { position: relative; }
+  .pick input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .pick:focus-within .btn { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .counter { font-size: 14px; color: var(--ink2); margin: 8px 0 0; }
+
+  /* 写真リストの1件。880px未満・以上とも同じ配置（サムネ右に No.・状態）。 */
+  #list { list-style: none; margin: 12px 0 0; padding: 0; }
+  .item { display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-areas: "thumb info" "step step" "memo memo" "ops ops"; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .item .thumb { grid-area: thumb; width: 72px; height: 72px; object-fit: cover; border-radius: 6px; background: var(--line); display: block; }
+  .item .info { grid-area: info; min-width: 0; font-size: 14px; color: var(--ink2); align-self: center; }
+  .item .info b { color: var(--ink); font-size: 16px; }
+  .item .steps { grid-area: step; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+  .item .steps button { min-width: 0; padding: 4px 2px; font-size: 14px; border-width: 1px; }
+  .item .steps button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 2px var(--surface); }
+  .item .memo { grid-area: memo; margin: 0; }
+  .item .ops { grid-area: ops; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .item .ops .mv { display: flex; gap: 8px; }
+  .item .ops button { min-width: 64px; padding: 8px 12px; }
+  .seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .empty { color: var(--ink3); font-size: 14px; margin: 12px 0 0; }
+
+  /* プレビュー: 794×1123の固定寸法ページを、枠の幅に合わせて縮小して置く */
+  .pager { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .pager button { min-width: 88px; }
+  .pager .pg-label { flex: 1; text-align: center; font-size: 14px; color: var(--ink2); }
+  #pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0; -webkit-overflow-scrolling: touch; }
+  .pv { flex: 0 0 100%; width: 100%; aspect-ratio: 210 / 297; position: relative; overflow: hidden; scroll-snap-align: start; background: #fff; border: 1px solid #b9b9c0; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .pg { position: absolute; left: 0; top: 0; width: 794px; height: 1123px; transform-origin: 0 0; transform: scale(var(--s, 0.432)); background: #fff; color: #1c1c1e; font-family: var(--font); }
+  .pg .it { position: absolute; white-space: nowrap; margin: 0; padding: 0; }
+  .pg .rect { position: absolute; }
+  .pg img.ph { position: absolute; display: block; }
+  .previewnote { font-size: 14px; color: var(--ink2); margin: 8px 0 0; }
+  .outbar { margin: 16px 0 0; }
+  #savePanel { margin: 16px 0 0; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); }
+  #savePanel .sp-head { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px 8px 0 0; font-size: 14px; }
+  #savePanel .sp-head p { margin: 0; flex: 1; min-width: 0; }
+  #savePanel .sp-body { padding: 12px; }
+  #savePanel .sp-one { margin: 0 0 16px; }
+  #savePanel .sp-one button { width: 100%; margin: 8px 0 0; }
+  #savePanel .sp-one img { display: block; width: 100%; height: auto; border: 1px solid var(--line-strong); background: #fff; -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; }
+  #savePanel .sp-cap { font-size: 14px; color: var(--ink2); margin: 0 0 4px; }
+
+  .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
+    border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
+  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; }
+
+  @media (min-width: 880px) {
+    main { padding: 24px 16px 40px; }
+    h1 { font-size: 24px; }
+    .cols { display: grid; grid-template-columns: 5fr 7fr; gap: 24px; align-items: start; }
+    .item { grid-template-columns: 72px minmax(0, 1fr); }
+    #pages { display: block; overflow: visible; }
+    .pv { margin: 0 0 16px; }
+    .pager { display: none; }
+    .jump { display: none; }
+  }
+
+  @media print {
+    @page { size: A4 portrait; margin: 0; }
+    html, body { background: #fff !important; }
+    body { font-size: 12pt; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; margin: 0; }
+    .cols { display: block; }
+    .right-wrap { display: block; }
+    .panel.pv-panel { border: 0; padding: 0; margin: 0; background: none; }
+    #pages { display: block; overflow: visible; width: 794px; }
+    .pv { display: block; width: 794px; height: 1120px; aspect-ratio: auto; margin: 0; border: 0; box-shadow: none; overflow: hidden; break-after: page; page-break-after: always; }
+    .pv:last-child { break-after: auto; page-break-after: auto; }
+    .pg { transform: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="no-print">
+    <h1>作業報告書・写真台帳メーカー</h1>
+    <p class="lead">現場の写真を選んで一言を付けると、表紙つきのA4の報告書ができます。</p>
+  </header>
+
+  <div class="notices no-print" role="note">
+    <p>写真はこの端末の中だけで処理します。送信・保存はしません（再読み込みで消えます）。</p>
+    <p>お客様の顔・表札・車のナンバー・書類などが写っていないか、出す前に確認してください。自動のぼかしや顔の検出は、このツールでは行いません。</p>
+    <p>民間・訪問系の作業報告の下書きです。公共工事の提出様式ではありません。</p>
+  </div>
+  <nav class="jump no-print" aria-label="ページ内リンク"><a href="#previewSec">プレビューへ</a><a href="#outSec">印刷・保存へ</a></nav>
+
+  <div class="cols">
+    <div class="left no-print">
+      <section class="panel" aria-labelledby="h-info">
+        <h2 id="h-info">現場の情報</h2>
+        <label class="fld">現場名（案件名） <span class="req">必須</span>
+          <input type="text" id="site" maxlength="40" autocomplete="off" placeholder="例: ○○邸 洗面所リフォーム">
+        </label>
+        <label class="fld">作業日 <span class="req">必須</span>
+          <input type="date" id="date">
+        </label>
+        <label class="fld">作業者・屋号（任意）
+          <input type="text" id="worker" maxlength="30" autocomplete="off">
+        </label>
+        <label class="fld">場所・お客様名（任意）
+          <input type="text" id="place" maxlength="30" autocomplete="off">
+          <span class="note">お客様の氏名や詳しい住所は、入れなくて構いません。</span>
+        </label>
+        <label class="fld">所見・申し送り（任意・200字まで）
+          <textarea id="notes" maxlength="200"></textarea>
+        </label>
+      </section>
+
+      <section class="panel" aria-labelledby="h-photo">
+        <h2 id="h-photo">写真を選ぶ（24枚まで）</h2>
+        <div class="stack">
+          <label class="pick"><input type="file" id="file" accept="image/*" multiple><span class="btn primary">写真を選ぶ</span></label>
+          <button type="button" id="sample">サンプルで試す（架空の絵6枚）</button>
+        </div>
+        <p class="msg" id="loadMsg" role="status" aria-live="polite"></p>
+        <div class="counter" id="counter"></div>
+        <ul id="list" aria-label="写真リスト"></ul>
+        <p class="empty" id="emptyMsg">まだ写真がありません。「写真を選ぶ」か「サンプルで試す」を押してください。</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-set">
+        <h2 id="h-set">1ページの枚数</h2>
+        <div class="seg" role="group" aria-label="1ページの枚数">
+          <button type="button" id="per4" aria-pressed="true">4枚（2×2）</button>
+          <button type="button" id="per6" aria-pressed="false">6枚（2×3）</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="right-wrap">
+      <section class="panel pv-panel" id="previewSec" aria-labelledby="h-prev">
+        <h2 id="h-prev" class="no-print">A4プレビュー</h2>
+        <p class="previewnote no-print" id="pageSummary"></p>
+        <div class="pager no-print" id="pager">
+          <button type="button" id="prevPg">前のページ</button>
+          <span class="pg-label" id="pgLabel" aria-live="polite"></span>
+          <button type="button" id="nextPg">次のページ</button>
+        </div>
+        <div id="pages" tabindex="-1" aria-label="A4のページ"></div>
+        <p class="previewnote no-print">プレビューは配置の確認用です。文字は写真リストで確認してください。</p>
+
+        <div class="outbar no-print" id="outSec">
+          <div class="stack">
+            <button type="button" id="printBtn" class="primary">印刷</button>
+            <button type="button" id="saveBtn">ページ画像を保存</button>
+            <button type="button" id="clearBtn" class="danger">全部消す</button>
+          </div>
+          <p class="note" id="iosNote" hidden>iPhone・iPadでは、印刷の画面が開かない場合があります。開かない場合は「ページ画像を保存」を使ってください。</p>
+          <p class="msg" id="outMsg" role="status" aria-live="polite"></p>
+        </div>
+        <div id="savePanel" class="no-print" hidden>
+          <div class="sp-head"><p id="spGuide"></p><button type="button" id="spClose">閉じる</button></div>
+          <div class="sp-body" id="spBody"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="mw-footer no-print">
+    <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+    <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+    <p>写真・入力した文字はすべてブラウザ内だけで処理し、サーバーには送信せず、保存もしません。アクセス解析（Cloudflare Web Analyticsを使い、ページの閲覧数を計測しています。写真・入力内容は送信しません）。</p>
+    <p>民間・訪問系の作業報告の下書きを作るツールです。公共工事の提出様式ではなく、書類としての有効性や検査への適合は保証しません。参考: 国土交通省「写真管理基準（案）」令和7年3月（2026-10-03確認。適用範囲は土木工事）。</p>
+    <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+  </footer>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 定数 ---------- */
+  var FONT = '"Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif';
+  var PW = 794, PH = 1123, M = 40, CW = PW - 2 * M;     /* 画面・印刷・画像の共通座標（A4=96dpi） */
+  var AREA_TOP = 84, AREA_H = 999, GAP = 16, CAP_H = 66;
+  var NOTES_FREE_MIN = 230;
+  var MAX_PHOTOS = 24, MAX_SIDE = 1600, OUT_W = 1240;
+  var STEPS = ['着手前', '作業中', '完了', 'その他'];
+
+  function $(id) { return document.getElementById(id); }
+
+  /* ---------- iOS判定（Day054・055から流用。実在UAで検算する） ---------- */
+  function isApplePortable(ua, touchPoints, hasTouchEnd) {
+    ua = ua || '';
+    if (/iPhone|iPad|iPod/.test(ua)) { return true; }
+    return /Macintosh/.test(ua) && (touchPoints > 1 || !!hasTouchEnd);
+  }
+  var IS_IOS = isApplePortable(navigator.userAgent, navigator.maxTouchPoints || 0, 'ontouchend' in document);
+  window.__isApplePortable = isApplePortable;
+
+  /* ---------- 状態（保存しない。メモリ上だけ） ---------- */
+  var state = { site: '', date: '', worker: '', place: '', notes: '', per: 4, photos: [] };
+  var nextId = 1;
+
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function fmtDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    if (!m) { return ''; }
+    var d = new Date(+m[1], +m[2] - 1, +m[3]);
+    var w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+    return m[1] + '年' + (+m[2]) + '月' + (+m[3]) + '日（' + w + '）';
+  }
+
+  /* ---------- 文字の計測・折り返し（画面・画像・印刷で同じ行割りを使う） ---------- */
+  var mctx = document.createElement('canvas').getContext('2d');
+  function fontStr(size, weight) { return (weight || 400) + ' ' + size + 'px ' + FONT; }
+  function tw(text, size, weight) { mctx.font = fontStr(size, weight); return mctx.measureText(text).width; }
+  function ellipsize(text, size, weight, maxW) {
+    if (tw(text, size, weight) <= maxW) { return text; }
+    var t = Array.from(text);
+    while (t.length && tw(t.join('') + '…', size, weight) > maxW) { t.pop(); }
+    return t.join('') + '…';
+  }
+  function wrapLines(text, size, weight, maxW, maxLines) {
+    var lines = [];
+    String(text).split('\n').forEach(function (para) {
+      var cur = '';
+      Array.from(para).forEach(function (ch) {
+        if (cur && tw(cur + ch, size, weight) > maxW) { lines.push(cur); cur = ch; } else { cur += ch; }
+      });
+      lines.push(cur);
+    });
+    if (maxLines && lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      lines[maxLines - 1] = ellipsize(lines[maxLines - 1] + '…', size, weight, maxW);
+    }
+    return lines;
+  }
+
+  /* ---------- 組版: ページごとの描画項目（座標は794×1123基準）を作る ---------- */
+  function T(items, x, y, text, size, weight, color, lh) {
+    items.push({ k: 't', x: x, y: y, text: text, size: size, weight: weight || 400, color: color || '#1c1c1e', lh: lh || Math.round(size * 1.4) });
+  }
+  function R(items, x, y, w, h, fill, stroke) { items.push({ k: 'r', x: x, y: y, w: w, h: h, fill: fill, stroke: stroke }); }
+  function notesBlock() {
+    var n = state.notes.replace(/\s+$/, '');
+    if (!n.trim()) { return null; }
+    var lines = wrapLines(n, 15, 400, CW - 24, 12);
+    return { lines: lines, h: 12 + 24 + 8 + lines.length * 24 + 12 };
+  }
+  function putNotes(items, y, nb) {
+    R(items, M, y, CW, nb.h, '#FAFAFA', '#C8C8CE');
+    T(items, M + 12, y + 12, '所見・申し送り', 16, 700, '#1c1c1e', 24);
+    nb.lines.forEach(function (ln, i) { T(items, M + 12, y + 12 + 24 + 8 + i * 24, ln, 15, 400, '#222', 24); });
+  }
+  function header(items, n, total) {
+    var site = state.site.trim() || '（現場名未入力）';
+    var right = n + ' / ' + total;
+    var rw = tw(right, 14, 400);
+    T(items, M, 34, ellipsize(site, 14, 400, CW - rw - 24), 14, 400, '#555', 20);
+    T(items, PW - M - rw, 34, right, 14, 400, '#555', 20);
+    R(items, M, 62, CW, 1, '#BBBBC2');
+  }
+
+  function buildLayout() {
+    var ph = state.photos, per = state.per, cols = 2, rows = per / 2;
+    var photoPages = Math.ceil(ph.length / per);
+    var rowH = Math.floor((AREA_H - GAP * (rows - 1)) / rows);
+    var cellW = Math.floor((CW - GAP) / 2);
+    var nb = notesBlock();
+    var notesOwn = false, notesOnLast = false;
+    if (nb) {
+      if (photoPages === 0) { notesOwn = true; }
+      else {
+        var k = ph.length - (photoPages - 1) * per;
+        var used = Math.ceil(k / cols);
+        var endY = AREA_TOP + used * rowH + (used - 1) * GAP;
+        var free = AREA_TOP + AREA_H - endY;
+        if (free >= NOTES_FREE_MIN && free >= nb.h + GAP) { notesOnLast = true; } else { notesOwn = true; }
+      }
+    }
+    var total = 1 + photoPages + (notesOwn ? 1 : 0);
+    var pages = [];
+
+    /* 表紙: 現場名44px・事務項目28px（375pxの縮小プレビューでも読める大きさ） */
+    var c = [];
+    var site = state.site.trim();
+    T(c, M, 120, '作業報告書', 28, 700, '#555', 40);
+    var siteLines = site ? wrapLines(site, 44, 700, CW, 3) : ['（現場名を入れてください）'];
+    var y = 176;
+    siteLines.forEach(function (ln) { T(c, M, y, ln, 44, 700, site ? '#111' : '#999', 60); y += 60; });
+    y += 16;
+    R(c, M, y, CW, 2, '#222');
+    y += 28;
+    var rowsData = [['作業日', fmtDate(state.date) || '（未入力）'], ['作業者', state.worker.trim()], ['場所', state.place.trim()], ['写真', ph.length + '枚（全' + total + 'ページ）']];
+    rowsData.forEach(function (r) {
+      if (!r[1]) { return; }
+      var vl = wrapLines(r[1], 28, 400, CW - 160, 2);
+      T(c, M, y, r[0], 28, 700, '#555', 40);
+      vl.forEach(function (ln, i) { T(c, M + 160, y + i * 40, ln, 28, 400, '#111', 40); });
+      y += vl.length * 40 + 12;
+      R(c, M, y, CW, 1, '#D8D8DE');
+      y += 16;
+    });
+    T(c, M, PH - M - 20, '作業記録の下書きです。公共工事の提出様式ではありません。', 14, 400, '#777', 20);
+    pages.push({ items: c, name: '表紙' });
+
+    for (var p = 0; p < photoPages; p++) {
+      var it = [];
+      header(it, p + 2, total);
+      var chunk = ph.slice(p * per, p * per + per);
+      chunk.forEach(function (ph1, i) {
+        var col = i % cols, row = Math.floor(i / cols);
+        var x = M + col * (cellW + GAP), yy = AREA_TOP + row * (rowH + GAP);
+        var fh = rowH - CAP_H;
+        R(it, x, yy, cellW, fh, '#F0F0F2', '#CFCFD6');
+        var sc = Math.min((cellW - 8) / ph1.w, (fh - 8) / ph1.h);
+        var iw = Math.round(ph1.w * sc), ih = Math.round(ph1.h * sc);
+        it.push({ k: 'i', id: ph1.id, url: ph1.url, x: x + Math.round((cellW - iw) / 2), y: yy + Math.round((fh - ih) / 2), w: iw, h: ih });
+        var no = p * per + i + 1;
+        var cap = 'No.' + no + (ph1.step ? '　' + ph1.step : '');
+        T(it, x, yy + fh + 6, cap, 15, 700, '#1c1c1e', 20);
+        if (ph1.memo.trim()) {
+          wrapLines(ph1.memo.trim(), 14, 400, cellW, 2).forEach(function (ln, j) { T(it, x, yy + fh + 26 + j * 20, ln, 14, 400, '#333', 20); });
+        }
+      });
+      if (nb && notesOnLast && p === photoPages - 1) {
+        var kk = chunk.length, used2 = Math.ceil(kk / cols);
+        putNotes(it, AREA_TOP + used2 * rowH + (used2 - 1) * GAP + GAP, nb);
+      }
+      pages.push({ items: it, name: '写真ページ' });
+    }
+    if (nb && notesOwn) {
+      var ni = [];
+      header(ni, total, total);
+      putNotes(ni, AREA_TOP, nb);
+      pages.push({ items: ni, name: '所見' });
+    }
+    return pages;
+  }
+
+  /* ---------- 画面（プレビュー）への描画 ---------- */
+  var pagesEl = $('pages');
+  function elFor(item) {
+    var e;
+    if (item.k === 't') {
+      e = document.createElement('div'); e.className = 'it'; e.textContent = item.text;
+      e.style.cssText = 'left:' + item.x + 'px;top:' + item.y + 'px;font:' + fontStr(item.size, item.weight) + ';line-height:' + item.lh + 'px;height:' + item.lh + 'px;color:' + item.color;
+    } else if (item.k === 'r') {
+      e = document.createElement('div'); e.className = 'rect';
+      e.style.cssText = 'left:' + item.x + 'px;top:' + item.y + 'px;width:' + item.w + 'px;height:' + item.h + 'px;background:' + item.fill + ';' + (item.stroke ? 'border:1px solid ' + item.stroke + ';' : '');
+    } else {
+      e = document.createElement('img'); e.className = 'ph'; e.src = item.url; e.alt = '';
+      e.style.cssText = 'left:' + item.x + 'px;top:' + item.y + 'px;width:' + item.w + 'px;height:' + item.h + 'px';
+    }
+    return e;
+  }
+  var lastPageCount = 0;
+  function renderPages() {
+    var layout = buildLayout();
+    var frag = document.createDocumentFragment();
+    layout.forEach(function (pg) {
+      var pv = document.createElement('div'); pv.className = 'pv';
+      var g = document.createElement('div'); g.className = 'pg';
+      pg.items.forEach(function (item) { g.appendChild(elFor(item)); });
+      pv.appendChild(g); frag.appendChild(pv);
+    });
+    pagesEl.textContent = '';
+    pagesEl.appendChild(frag);
+    lastPageCount = layout.length;
+    var n = state.photos.length;
+    $('pageSummary').textContent = '全' + layout.length + 'ページ（表紙1＋写真' + Math.ceil(n / state.per) + (layout.length > 1 + Math.ceil(n / state.per) || (state.notes.trim() && n === 0) ? '＋所見' : '') + '）／ 写真' + n + '枚・1ページ' + state.per + '枚';
+    applyScale();
+    updatePager();
+    return layout;
+  }
+  function applyScale() {
+    var pv = pagesEl.querySelector('.pv');
+    var w = pv ? pv.clientWidth : pagesEl.clientWidth;
+    if (w > 0) { pagesEl.style.setProperty('--s', String(w / PW)); }
+  }
+  var rafId = 0, timer = 0;
+  function scheduleRender() { clearTimeout(timer); timer = setTimeout(renderPages, 90); }
+  if (window.ResizeObserver) { new ResizeObserver(function () { applyScale(); }).observe(pagesEl); }
+  window.addEventListener('resize', function () { applyScale(); updatePager(); });
+
+  function curPage() { var w = pagesEl.clientWidth || 1; return Math.max(0, Math.min(lastPageCount - 1, Math.round(pagesEl.scrollLeft / w))); }
+  function updatePager() {
+    var i = curPage();
+    $('pgLabel').textContent = (i === 0 ? '表紙' : (i + 1) + 'ページ目') + '（' + (i + 1) + ' / ' + lastPageCount + '）';
+    $('prevPg').disabled = i <= 0; $('nextPg').disabled = i >= lastPageCount - 1;
+  }
+  function goPage(i) { var w = pagesEl.clientWidth; pagesEl.scrollTo ? pagesEl.scrollTo({ left: i * w, behavior: 'smooth' }) : (pagesEl.scrollLeft = i * w); setTimeout(updatePager, 350); }
+  pagesEl.addEventListener('scroll', function () { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(updatePager); });
+  $('prevPg').addEventListener('click', function () { goPage(curPage() - 1); });
+  $('nextPg').addEventListener('click', function () { goPage(curPage() + 1); });
+
+  /* ---------- 写真の読み込み（端末内・1枚ずつ縮小・Exifは引き継がない） ---------- */
+  function loadImageEl(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { resolve({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+  function canvasToBlob(cv, type, q) {
+    return new Promise(function (resolve, reject) { cv.toBlob(function (b) { b ? resolve(b) : reject(new Error('toBlob')); }, type, q); });
+  }
+  async function shrinkToPhoto(source, sw, sh) {
+    var sc = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+    var w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+    var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);
+    cx.imageSmoothingQuality = 'high'; cx.drawImage(source, 0, 0, w, h);
+    var blob = await canvasToBlob(cv, 'image/jpeg', 0.88);
+    cv.width = 0; cv.height = 0;
+    return { blob: blob, w: w, h: h };
+  }
+  function addPhoto(res, step, memo) {
+    var p = { id: nextId++, url: URL.createObjectURL(res.blob), w: res.w, h: res.h, step: step || '', memo: memo || '' };
+    state.photos.push(p); return p;
+  }
+  async function importFile(file) {
+    var loaded = null;
+    try {
+      loaded = await loadImageEl(file);
+      var res = await shrinkToPhoto(loaded.img, loaded.img.naturalWidth, loaded.img.naturalHeight);
+      return addPhoto(res);
+    } catch (e1) {
+      if (loaded) { throw e1; }
+      if (window.createImageBitmap) {
+        var bmp = await createImageBitmap(file);
+        try { return addPhoto(await shrinkToPhoto(bmp, bmp.width, bmp.height)); } finally { if (bmp.close) { bmp.close(); } }
+      }
+      throw e1;
+    } finally {
+      if (loaded) { loaded.img.src = ''; URL.revokeObjectURL(loaded.url); }
+    }
+  }
+  var busy = false;
+  async function handleFiles(fileList) {
+    if (busy) { return; }
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) { return; }
+    busy = true;
+    var room = MAX_PHOTOS - state.photos.length, over = 0, failed = [], ok = 0;
+    if (files.length > room) { over = files.length - Math.max(room, 0); files = files.slice(0, Math.max(room, 0)); }
+    var msg = $('loadMsg'); msg.className = 'msg';
+    for (var i = 0; i < files.length; i++) {
+      msg.textContent = '読み込み中… ' + (i + 1) + ' / ' + files.length;
+      try { await importFile(files[i]); ok++; } catch (e) { failed.push(files[i].name || '（名前なし）'); }
+      if ((i % 4) === 3) { await new Promise(function (r) { setTimeout(r, 0); }); }
+    }
+    var parts = [ok + '枚を読み込みました。'];
+    if (over > 0) { parts.push('上限の' + MAX_PHOTOS + '枚を超えるため、' + over + '枚は読み込んでいません。'); }
+    if (failed.length) { parts.push(failed.length + '枚は読み込めませんでした（' + failed.slice(0, 5).join('、') + (failed.length > 5 ? ' ほか' : '') + '）。この端末のブラウザで開けない形式の可能性があります。'); }
+    msg.textContent = parts.join('');
+    msg.className = 'msg' + ((over > 0 || failed.length) ? ' err' : ' ok');
+    busy = false;
+    renderList(); renderPages();
+  }
+  window.__handleFiles = handleFiles;
+  $('file').addEventListener('change', function (e) { var f = e.target.files; handleFiles(f).then(function () { e.target.value = ''; }); });
+
+  /* ---------- 写真リスト ---------- */
+  var listEl = $('list');
+  function renderList(focusSel) {
+    listEl.textContent = '';
+    var n = state.photos.length;
+    $('emptyMsg').hidden = n > 0;
+    $('counter').textContent = n ? '写真 ' + n + ' / ' + MAX_PHOTOS + '枚' : '';
+    state.photos.forEach(function (p, i) {
+      var li = document.createElement('li'); li.className = 'item'; li.dataset.id = p.id;
+      var img = document.createElement('img'); img.className = 'thumb'; img.src = p.url; img.alt = '写真' + (i + 1);
+      var info = document.createElement('div'); info.className = 'info';
+      info.innerHTML = '<b>No.' + (i + 1) + '</b><br><span class="st">' + (p.step || '工程: 未選択') + '</span>';
+      var steps = document.createElement('div'); steps.className = 'steps'; steps.setAttribute('role', 'group'); steps.setAttribute('aria-label', 'No.' + (i + 1) + 'の工程');
+      STEPS.forEach(function (s) {
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = s; b.setAttribute('aria-pressed', p.step === s ? 'true' : 'false');
+        b.dataset.step = s; steps.appendChild(b);
+      });
+      var memo = document.createElement('input'); memo.type = 'text'; memo.className = 'memo'; memo.maxLength = 40; memo.value = p.memo;
+      memo.placeholder = '一言（例: 洗面台 排水口 分解前）'; memo.setAttribute('aria-label', 'No.' + (i + 1) + 'の一言'); memo.autocomplete = 'off';
+      var ops = document.createElement('div'); ops.className = 'ops';
+      var mv = document.createElement('div'); mv.className = 'mv';
+      var up = document.createElement('button'); up.type = 'button'; up.textContent = '上へ'; up.dataset.op = 'up'; up.disabled = i === 0;
+      var dn = document.createElement('button'); dn.type = 'button'; dn.textContent = '下へ'; dn.dataset.op = 'down'; dn.disabled = i === n - 1;
+      var del = document.createElement('button'); del.type = 'button'; del.textContent = '削除'; del.className = 'danger'; del.dataset.op = 'del';
+      mv.appendChild(up); mv.appendChild(dn); ops.appendChild(mv); ops.appendChild(del);
+      li.appendChild(img); li.appendChild(info); li.appendChild(steps); li.appendChild(memo); li.appendChild(ops);
+      listEl.appendChild(li);
+    });
+    if (focusSel) { var f = listEl.querySelector(focusSel); if (f && !f.disabled) { f.focus(); } }
+  }
+  function photoOf(li) { var id = +li.dataset.id; for (var i = 0; i < state.photos.length; i++) { if (state.photos[i].id === id) { return i; } } return -1; }
+  listEl.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) { return; }
+    var li = b.closest('.item'); var i = photoOf(li); if (i < 0) { return; }
+    var p = state.photos[i];
+    if (b.dataset.step) {
+      p.step = (p.step === b.dataset.step) ? '' : b.dataset.step;
+      li.querySelectorAll('.steps button').forEach(function (x) { x.setAttribute('aria-pressed', x.dataset.step === p.step ? 'true' : 'false'); });
+      li.querySelector('.st').textContent = p.step || '工程: 未選択';
+      renderPages();
+    } else if (b.dataset.op === 'up' && i > 0) {
+      state.photos.splice(i - 1, 0, state.photos.splice(i, 1)[0]); renderList('li[data-id="' + p.id + '"] [data-op="' + (i - 1 > 0 ? 'up' : 'down') + '"]'); renderPages();
+    } else if (b.dataset.op === 'down' && i < state.photos.length - 1) {
+      state.photos.splice(i + 1, 0, state.photos.splice(i, 1)[0]); renderList('li[data-id="' + p.id + '"] [data-op="down"]'); renderPages();
+    } else if (b.dataset.op === 'del') {
+      URL.revokeObjectURL(p.url); state.photos.splice(i, 1); renderList(); renderPages();
+      $('loadMsg').textContent = ''; $('loadMsg').className = 'msg';
+    }
+  });
+  listEl.addEventListener('input', function (e) {
+    if (!e.target.classList.contains('memo')) { return; }
+    var i = photoOf(e.target.closest('.item')); if (i < 0) { return; }
+    state.photos[i].memo = e.target.value; scheduleRender();
+  });
+
+  /* ---------- 入力欄・設定 ---------- */
+  ['site', 'worker', 'place', 'notes', 'date'].forEach(function (k) {
+    $(k).addEventListener('input', function () { state[k] = this.value; if (k === 'site') { this.classList.remove('bad'); } scheduleRender(); });
+  });
+  function setPer(n) {
+    state.per = n;
+    $('per4').setAttribute('aria-pressed', n === 4 ? 'true' : 'false');
+    $('per6').setAttribute('aria-pressed', n === 6 ? 'true' : 'false');
+    renderPages();
+  }
+  $('per4').addEventListener('click', function () { setPer(4); });
+  $('per6').addEventListener('click', function () { setPer(6); });
+
+  /* ---------- サンプル（架空の絵6枚。単色と図形だけ。人・文字・住所なし） ---------- */
+  function sceneCanvas() { var c = document.createElement('canvas'); c.width = 960; c.height = 720; return c; }
+  function rr(x, c, X, Y, W, H, fill) { x.fillStyle = fill; x.fillRect(X, Y, W, H); }
+  function ell(x, cx, cy, rx, ry, fill, stroke) { x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fillStyle = fill; x.fill(); if (stroke) { x.strokeStyle = stroke; x.lineWidth = 6; x.stroke(); } }
+  function faucet(x, cx, by, fill, dark) {
+    x.fillStyle = fill; x.fillRect(cx - 18, by - 130, 36, 130);
+    x.beginPath(); x.moveTo(cx - 18, by - 130); x.quadraticCurveTo(cx - 18, by - 190, cx + 40, by - 190); x.lineTo(cx + 90, by - 190); x.lineTo(cx + 90, by - 160); x.lineTo(cx + 40, by - 160); x.quadraticCurveTo(cx + 18, by - 160, cx + 18, by - 130); x.closePath(); x.fill();
+    x.fillStyle = dark; x.fillRect(cx - 60, by - 24, 120, 24);
+  }
+  function whole(after) {
+    var c = sceneCanvas(), x = c.getContext('2d');
+    rr(x, 0, 0, 0, 960, 520, after ? '#E3EEF2' : '#D5DDE0'); rr(x, 0, 0, 520, 960, 200, after ? '#C9C2B6' : '#A9A294');
+    rr(x, 0, 250, 70, 460, 190, after ? '#CFE3EC' : '#B6C9D1'); x.strokeStyle = after ? '#F4F4F4' : '#8E8E8E'; x.lineWidth = 10; x.strokeRect(250, 70, 460, 190);
+    rr(x, 0, 180, 330, 600, 330, after ? '#D8C3A3' : '#B8A582'); rr(x, 0, 190, 400, 285, 250, after ? '#CDB48E' : '#A8956F'); rr(x, 0, 490, 400, 285, 250, after ? '#CDB48E' : '#A8956F');
+    rr(x, 0, 150, 300, 660, 40, after ? '#F4F4F4' : '#DCDCDC'); ell(x, 480, 300, 130, 22, after ? '#E9EEF1' : '#CBCFD0');
+    if (after) { faucet(x, 480, 300, '#E6EBEE', '#9AA4AA'); } else { faucet(x, 480, 300, '#8F9496', '#6E7274'); ell(x, 420, 308, 26, 8, '#8A6B4A'); ell(x, 560, 305, 18, 6, '#8A6B4A'); }
+    return c;
+  }
+  function sceneDrainBefore() {
+    var c = sceneCanvas(), x = c.getContext('2d'); rr(x, 0, 0, 0, 960, 720, '#CFD5D8');
+    ell(x, 480, 380, 400, 270, '#EDEFF0', '#B7BCBE'); ell(x, 480, 380, 150, 100, '#4A4F52', '#7A8084');
+    x.strokeStyle = '#9AA0A3'; x.lineWidth = 8; for (var i = -100; i <= 100; i += 40) { x.beginPath(); x.moveTo(480 + i, 300); x.lineTo(480 + i, 460); x.stroke(); }
+    ell(x, 300, 300, 40, 14, '#8A6B4A'); ell(x, 640, 470, 50, 16, '#8A6B4A'); return c;
+  }
+  function scenePipe() {
+    var c = sceneCanvas(), x = c.getContext('2d'); rr(x, 0, 0, 0, 960, 720, '#5F666B'); rr(x, 0, 0, 0, 80, 720, '#4C5256'); rr(x, 0, 880, 0, 80, 720, '#4C5256');
+    x.strokeStyle = '#B2B8BC'; x.lineWidth = 46; x.lineCap = 'round'; x.beginPath(); x.moveTo(300, 0); x.lineTo(300, 380); x.quadraticCurveTo(300, 520, 440, 520); x.lineTo(660, 520); x.stroke();
+    x.strokeStyle = '#8F959A'; x.lineWidth = 12; x.beginPath(); x.moveTo(290, 40); x.lineTo(290, 380); x.stroke();
+    rr(x, 0, 250, 340, 100, 60, '#9CA3A8'); x.save(); x.translate(720, 250); x.rotate(-0.5); rr(x, 0, 0, 0, 300, 36, '#E08A2E'); ell(x, 0, 18, 46, 46, '#E08A2E'); ell(x, 0, 18, 22, 22, '#5F666B'); x.restore();
+    return c;
+  }
+  function sceneNewFaucet() {
+    var c = sceneCanvas(), x = c.getContext('2d'); rr(x, 0, 0, 0, 960, 720, '#DDE8EC'); rr(x, 0, 0, 560, 960, 160, '#F1F1F1');
+    ell(x, 480, 600, 330, 70, '#E0E6E9', '#B7BEC2');
+    var g = x.createLinearGradient(380, 0, 580, 0); g.addColorStop(0, '#9FAAB2'); g.addColorStop(0.5, '#F4F7F9'); g.addColorStop(1, '#8F9AA2');
+    x.fillStyle = g; x.fillRect(440, 220, 70, 330);
+    x.beginPath(); x.moveTo(440, 240); x.quadraticCurveTo(440, 140, 560, 140); x.lineTo(700, 140); x.lineTo(700, 200); x.lineTo(570, 200); x.quadraticCurveTo(510, 200, 510, 250); x.closePath(); x.fill();
+    rr(x, 0, 380, 520, 190, 40, '#7C878F'); rr(x, 0, 700, 140, 40, 80, '#8E99A1'); return c;
+  }
+  function sceneCheck() {
+    var c = sceneCanvas(), x = c.getContext('2d'); rr(x, 0, 0, 0, 960, 720, '#D8E6EC');
+    ell(x, 480, 380, 400, 270, '#F0F2F3', '#B7BCBE'); ell(x, 480, 380, 300, 190, '#BFE0F0'); ell(x, 480, 380, 220, 130, '#CDE9F6'); ell(x, 480, 380, 120, 70, '#DDF1FA');
+    ell(x, 480, 380, 26, 16, '#6B7276'); x.strokeStyle = '#2E9A58'; x.lineWidth = 34; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); x.moveTo(380, 560); x.lineTo(440, 620); x.lineTo(560, 480); x.stroke(); return c;
+  }
+  async function loadSample() {
+    if (busy) { return; }
+    busy = true;
+    var scenes = [whole(false), sceneDrainBefore(), scenePipe(), sceneNewFaucet(), sceneCheck(), whole(true)];
+    var steps = ['着手前', '着手前', '作業中', '作業中', '完了', '完了'];
+    var memos = ['洗面台 全景', '排水口まわり', '排水管の取り外し', '新しい水栓の取り付け', '排水の確認', '洗面台 全景'];
+    clearPhotos();
+    for (var i = 0; i < scenes.length; i++) {
+      var res = await shrinkToPhoto(scenes[i], 960, 720); scenes[i].width = 0; addPhoto(res, steps[i], memos[i]);
+    }
+    state.site = 'サンプル邸 洗面所リフォーム（架空）'; state.worker = 'ことぶき設備（架空）'; state.place = 'サンプル市（架空）';
+    state.date = '2026-10-03'; state.notes = '排水口まわりの部品を交換しました。水漏れのないことを確認済みです。';
+    $('site').value = state.site; $('worker').value = state.worker; $('place').value = state.place; $('date').value = state.date; $('notes').value = state.notes;
+    $('loadMsg').textContent = 'サンプル（すべて架空の絵）を入れました。'; $('loadMsg').className = 'msg ok';
+    busy = false; renderList(); renderPages();
+  }
+  $('sample').addEventListener('click', loadSample);
+  window.__loadSample = loadSample;
+
+  /* ---------- 出力 ---------- */
+  function outMsg(text, cls) { var m = $('outMsg'); m.textContent = text; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  function checkReady() {
+    if (!state.site.trim()) { $('site').classList.add('bad'); $('site').focus(); outMsg('現場名を入れてください。', 'err'); return false; }
+    if (!state.photos.length) { outMsg('写真を1枚以上選んでください。', 'err'); return false; }
+    return true;
+  }
+  $('printBtn').addEventListener('click', function () {
+    if (!checkReady()) { return; }
+    clearTimeout(timer); renderPages();               /* 印刷は必ず今の入力から組み直す */
+    outMsg('');
+    try { window.print(); } catch (e) { outMsg('印刷の画面を開けませんでした。「ページ画像を保存」を使ってください。', 'err'); }
+  });
+  if (IS_IOS) { $('iosNote').hidden = false; }
+
+  function dataUrlToFile(url, name) {
+    var b = atob(url.split(',')[1]), u = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) { u[i] = b.charCodeAt(i); }
+    return new File([u], name, { type: 'image/png' });
+  }
+  function loadForCanvas(url) { return new Promise(function (res, rej) { var i = new Image(); i.onload = function () { res(i); }; i.onerror = rej; i.src = url; }); }
+  async function drawPageToPng(pg) {
+    var K = OUT_W / PW, cv = document.createElement('canvas'); cv.width = OUT_W; cv.height = Math.round(PH * K);
+    var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.setTransform(K, 0, 0, K, 0, 0);
+    x.imageSmoothingQuality = 'high'; x.textBaseline = 'middle';
+    for (var i = 0; i < pg.items.length; i++) {
+      var it = pg.items[i];
+      if (it.k === 'r') { x.fillStyle = it.fill; x.fillRect(it.x, it.y, it.w, it.h); if (it.stroke) { x.strokeStyle = it.stroke; x.lineWidth = 1; x.strokeRect(it.x + 0.5, it.y + 0.5, it.w - 1, it.h - 1); } }
+      else if (it.k === 't') { x.font = fontStr(it.size, it.weight); x.fillStyle = it.color; x.fillText(it.text, it.x, it.y + it.lh / 2); }
+      else { var im = await loadForCanvas(it.url); x.drawImage(im, it.x, it.y, it.w, it.h); im.src = ''; }
+    }
+    var url = cv.toDataURL('image/png');
+    cv.width = 0; cv.height = 0;
+    return url;                                          /* toDataURLは同期。toBlobは使わない（iOSの共有シートの条件のため） */
+  }
+  var savedFiles = [];
+  function baseName() { return 'report-' + (state.date || todayStr()); }
+  async function openSavePanel() {
+    if (!checkReady()) { return; }
+    outMsg('ページ画像を作っています…');
+    var layout = buildLayout(), body = $('spBody'); body.textContent = ''; savedFiles = [];
+    var canShareFiles = false;
+    for (var i = 0; i < layout.length; i++) {
+      var url = await drawPageToPng(layout[i]);
+      var file = dataUrlToFile(url, baseName() + '-p' + (i + 1) + '.png');
+      savedFiles.push({ file: file, url: url });
+    }
+    try { canShareFiles = !!(navigator.canShare && savedFiles.length && navigator.canShare({ files: savedFiles.map(function (s) { return s.file; }) })); } catch (e) { canShareFiles = false; }
+    var oneShare = false;
+    try { oneShare = !!(navigator.canShare && navigator.canShare({ files: [savedFiles[0].file] })); } catch (e2) { oneShare = false; }
+    var useShare = IS_IOS && oneShare;
+    $('spGuide').textContent = IS_IOS
+      ? (useShare ? '「共有・保存」を押して、「画像を保存」などを選びます。開かない場合は、画像を長押しして「“写真”に追加」を選んでください（表示は端末により異なります）。'
+                  : '画像を長押しして「“写真”に追加」を選んでください（表示は端末により異なります）。')
+      : '各ページの「PNGで保存」を押すと、ダウンロードされます。';
+    if (useShare && canShareFiles && savedFiles.length > 1) {
+      var all = document.createElement('button'); all.type = 'button'; all.className = 'primary'; all.textContent = '全' + savedFiles.length + 'ページをまとめて共有・保存'; all.style.marginBottom = '16px';
+      all.addEventListener('click', function () { shareNow(savedFiles.map(function (s) { return s.file; })); });
+      body.appendChild(all);
+    }
+    savedFiles.forEach(function (s, i) {
+      var box = document.createElement('div'); box.className = 'sp-one';
+      var cap = document.createElement('p'); cap.className = 'sp-cap'; cap.textContent = (i === 0 ? '表紙' : (i + 1) + 'ページ目') + '（' + (i + 1) + ' / ' + savedFiles.length + '）';
+      var btn = document.createElement('button'); btn.type = 'button'; btn.className = IS_IOS ? '' : 'primary';
+      btn.textContent = useShare ? 'このページを共有・保存' : (IS_IOS ? '' : 'PNGで保存');
+      if (btn.textContent) {
+        btn.addEventListener('click', function () { if (useShare) { shareNow([s.file]); } else { downloadFile(s); } });
+      }
+      var img = document.createElement('img'); img.src = s.url; img.alt = cap.textContent + 'の画像（長押しで保存できる場合があります）';
+      box.appendChild(cap); if (btn.textContent) { box.appendChild(btn); } box.appendChild(img); body.appendChild(box);
+    });
+    $('savePanel').hidden = false; outMsg(''); $('savePanel').scrollIntoView({ block: 'start' });
+  }
+  function shareNow(files) {                             /* ボタン押下の同じ処理の中で、同期的に呼ぶ */
+    var p;
+    try { p = navigator.share({ files: files }); } catch (e) { outMsg('共有を開けませんでした。画像を長押しして保存してください。', 'err'); return; }
+    p.then(function () { outMsg(''); }).catch(function (e) {
+      if (e && e.name === 'AbortError') { return; }
+      outMsg('共有を開けませんでした。画像を長押しして保存してください。', 'err');
+    });
+  }
+  function downloadFile(s) {
+    var a = document.createElement('a'); a.href = s.url; a.download = s.file.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  $('saveBtn').addEventListener('click', function () { openSavePanel().catch(function () { outMsg('ページ画像を作れませんでした。「印刷」から保存してください。', 'err'); }); });
+  $('spClose').addEventListener('click', function () { $('savePanel').hidden = true; $('spBody').textContent = ''; savedFiles = []; $('saveBtn').focus(); });
+  window.__makePagePngs = async function () { var l = buildLayout(), r = []; for (var i = 0; i < l.length; i++) { r.push(await drawPageToPng(l[i])); } return r; };
+
+  /* ---------- 全部消す ---------- */
+  function clearPhotos() { state.photos.forEach(function (p) { URL.revokeObjectURL(p.url); }); state.photos = []; }
+  var armed = false, armTimer = 0;
+  $('clearBtn').addEventListener('click', function () {
+    var b = this;
+    if (!armed) { armed = true; b.textContent = 'もう一度押すと、写真と入力がすべて消えます'; armTimer = setTimeout(function () { armed = false; b.textContent = '全部消す'; }, 5000); return; }
+    clearTimeout(armTimer); armed = false; b.textContent = '全部消す';
+    clearPhotos(); state.site = state.worker = state.place = state.notes = ''; state.date = todayStr(); state.per = 4;
+    ['site', 'worker', 'place', 'notes'].forEach(function (k) { $(k).value = ''; $(k).classList && $(k).classList.remove('bad'); });
+    $('date').value = state.date; $('savePanel').hidden = true; $('spBody').textContent = ''; savedFiles = [];
+    $('loadMsg').textContent = ''; $('loadMsg').className = 'msg'; setPer(4); renderList();
+    outMsg('写真と入力をすべて消しました。', 'ok');
+  });
+
+  /* ---------- 起動 ---------- */
+  state.date = todayStr(); $('date').value = state.date;
+  window.__state = state;
+  renderList(); renderPages();
+})();
+</script>
+
+<!-- Cloudflare Web Analytics（ページの閲覧に関する計測。写真・入力内容は送信しません） -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
