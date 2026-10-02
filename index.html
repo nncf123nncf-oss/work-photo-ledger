@@ -76,8 +76,8 @@
 
   /* プレビュー: 794×1123の固定寸法ページを、枠の幅に合わせて縮小して置く */
   .pager { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-  .pager button { min-width: 88px; }
-  .pager .pg-label { flex: 1; text-align: center; font-size: 14px; color: var(--ink2); }
+  .pager button { min-width: 72px; }
+  .pager .pg-label { flex: 1; white-space: nowrap; text-align: center; font-size: 14px; color: var(--ink2); }
   #pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0; -webkit-overflow-scrolling: touch; }
   .pv { flex: 0 0 100%; width: 100%; aspect-ratio: 210 / 297; position: relative; overflow: hidden; scroll-snap-align: start; background: #fff; border: 1px solid #b9b9c0; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
   .pg { position: absolute; left: 0; top: 0; width: 794px; height: 1123px; transform-origin: 0 0; transform: scale(var(--s, 0.432)); background: #fff; color: #1c1c1e; font-family: var(--font); }
@@ -188,9 +188,9 @@
         <h2 id="h-prev" class="no-print">A4プレビュー</h2>
         <p class="previewnote no-print" id="pageSummary"></p>
         <div class="pager no-print" id="pager">
-          <button type="button" id="prevPg">前のページ</button>
+          <button type="button" id="prevPg">前へ</button>
           <span class="pg-label" id="pgLabel" aria-live="polite"></span>
-          <button type="button" id="nextPg">次のページ</button>
+          <button type="button" id="nextPg">次へ</button>
         </div>
         <div id="pages" tabindex="-1" aria-label="A4のページ"></div>
         <p class="previewnote no-print">プレビューは配置の確認用です。文字は写真リストで確認してください。</p>
@@ -436,7 +436,7 @@
   function curPage() { var w = pagesEl.clientWidth || 1; return Math.max(0, Math.min(lastPageCount - 1, Math.round(pagesEl.scrollLeft / w))); }
   function updatePager() {
     var i = curPage();
-    $('pgLabel').textContent = (i === 0 ? '表紙' : (i + 1) + 'ページ目') + '（' + (i + 1) + ' / ' + lastPageCount + '）';
+    $('pgLabel').textContent = (i === 0 ? '表紙' : (i + 1) + 'ページ目') + ' ' + (i + 1) + '/' + lastPageCount;
     $('prevPg').disabled = i <= 0; $('nextPg').disabled = i >= lastPageCount - 1;
   }
   function goPage(i) { var w = pagesEl.clientWidth; pagesEl.scrollTo ? pagesEl.scrollTo({ left: i * w, behavior: 'smooth' }) : (pagesEl.scrollLeft = i * w); setTimeout(updatePager, 350); }
