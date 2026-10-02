@@ -80,6 +80,7 @@
   .pager .pg-label { flex: 1; white-space: nowrap; text-align: center; font-size: 14px; color: var(--ink2); }
   #pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0; -webkit-overflow-scrolling: touch; }
   .pv { flex: 0 0 100%; width: 100%; aspect-ratio: 210 / 297; position: relative; overflow: hidden; scroll-snap-align: start; background: #fff; border: 1px solid #b9b9c0; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .pg, .pg * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .pg { position: absolute; left: 0; top: 0; width: 794px; height: 1123px; transform-origin: 0 0; transform: scale(var(--s, 0.432)); background: #fff; color: #1c1c1e; font-family: var(--font); }
   .pg .it { position: absolute; white-space: nowrap; margin: 0; padding: 0; }
   .pg .rect { position: absolute; }
@@ -97,7 +98,7 @@
 
   .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
     border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
-  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; }
+  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; display: inline-block; padding: 13px 0; }
 
   @media (min-width: 880px) {
     main { padding: 24px 16px 40px; }
@@ -123,6 +124,7 @@
     .pv { display: block; width: 794px; height: 1120px; aspect-ratio: auto; margin: 0; border: 0; box-shadow: none; overflow: hidden; break-after: page; page-break-after: always; }
     .pv:last-child { break-after: auto; page-break-after: auto; }
     .pg { transform: none !important; }
+    .pg, .pg * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
@@ -159,6 +161,7 @@
         </label>
         <label class="fld">所見・申し送り（任意・200字まで）
           <textarea id="notes" maxlength="200"></textarea>
+          <span class="note">報告書には12行ぶんまで載ります（長い場合は「…」で省略されます）。</span>
         </label>
       </section>
 
@@ -242,7 +245,6 @@
     return /Macintosh/.test(ua) && (touchPoints > 1 || !!hasTouchEnd);
   }
   var IS_IOS = isApplePortable(navigator.userAgent, navigator.maxTouchPoints || 0, 'ontouchend' in document);
-  window.__isApplePortable = isApplePortable;
 
   /* ---------- 状態（保存しない。メモリ上だけ） ---------- */
   var state = { site: '', date: '', worker: '', place: '', notes: '', per: 4, photos: [] };
@@ -334,7 +336,7 @@
     /* 表紙: 現場名44px・事務項目28px（375pxの縮小プレビューでも読める大きさ） */
     var c = [];
     var site = state.site.trim();
-    T(c, M, 120, '作業報告書', 28, 700, '#555', 40);
+    T(c, M, 112, '作業報告書', 32, 700, '#555', 44);
     var siteLines = site ? wrapLines(site, 44, 700, CW, 3) : ['（現場名を入れてください）'];
     var y = 176;
     siteLines.forEach(function (ln) { T(c, M, y, ln, 44, 700, site ? '#111' : '#999', 60); y += 60; });
@@ -344,10 +346,10 @@
     var rowsData = [['作業日', fmtDate(state.date) || '（未入力）'], ['作業者', state.worker.trim()], ['場所', state.place.trim()], ['写真', ph.length + '枚（全' + total + 'ページ）']];
     rowsData.forEach(function (r) {
       if (!r[1]) { return; }
-      var vl = wrapLines(r[1], 28, 400, CW - 160, 2);
-      T(c, M, y, r[0], 28, 700, '#555', 40);
-      vl.forEach(function (ln, i) { T(c, M + 160, y + i * 40, ln, 28, 400, '#111', 40); });
-      y += vl.length * 40 + 12;
+      var vl = wrapLines(r[1], 32, 400, CW - 170, 2);
+      T(c, M, y, r[0], 32, 700, '#555', 44);
+      vl.forEach(function (ln, i) { T(c, M + 170, y + i * 44, ln, 32, 400, '#111', 44); });
+      y += vl.length * 44 + 12;
       R(c, M, y, CW, 1, '#D8D8DE');
       y += 16;
     });
@@ -404,8 +406,11 @@
     }
     return e;
   }
-  var lastPageCount = 0;
+  var lastPageCount = 0, saveGen = 0, saving = false;
   function renderPages() {
+    saveGen++;
+    if (!$('savePanel').hidden) { closeSavePanel(); outMsg('内容が変わったため、保存の画面を閉じました。もう一度「ページ画像を保存」を押してください。'); }
+    var sl = pagesEl.scrollLeft;
     var layout = buildLayout();
     var frag = document.createDocumentFragment();
     layout.forEach(function (pg) {
@@ -420,6 +425,7 @@
     var n = state.photos.length;
     $('pageSummary').textContent = '全' + layout.length + 'ページ（表紙1＋写真' + Math.ceil(n / state.per) + (layout.length > 1 + Math.ceil(n / state.per) || (state.notes.trim() && n === 0) ? '＋所見' : '') + '）／ 写真' + n + '枚・1ページ' + state.per + '枚';
     applyScale();
+    pagesEl.scrollLeft = sl;
     updatePager();
     return layout;
   }
@@ -488,11 +494,12 @@
     }
   }
   var busy = false;
+  function setBusy(b) { busy = b; ['clearBtn', 'printBtn', 'saveBtn', 'sample'].forEach(function (id) { $(id).disabled = b; }); }
   async function handleFiles(fileList) {
     if (busy) { return; }
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) { return; }
-    busy = true;
+    setBusy(true);
     var room = MAX_PHOTOS - state.photos.length, over = 0, failed = [], ok = 0;
     if (files.length > room) { over = files.length - Math.max(room, 0); files = files.slice(0, Math.max(room, 0)); }
     var msg = $('loadMsg'); msg.className = 'msg';
@@ -506,10 +513,9 @@
     if (failed.length) { parts.push(failed.length + '枚は読み込めませんでした（' + failed.slice(0, 5).join('、') + (failed.length > 5 ? ' ほか' : '') + '）。この端末のブラウザで開けない形式の可能性があります。'); }
     msg.textContent = parts.join('');
     msg.className = 'msg' + ((over > 0 || failed.length) ? ' err' : ' ok');
-    busy = false;
+    setBusy(false);
     renderList(); renderPages();
   }
-  window.__handleFiles = handleFiles;
   $('file').addEventListener('change', function (e) { var f = e.target.files; handleFiles(f).then(function () { e.target.value = ''; }); });
 
   /* ---------- 写真リスト ---------- */
@@ -624,9 +630,18 @@
     ell(x, 480, 380, 400, 270, '#F0F2F3', '#B7BCBE'); ell(x, 480, 380, 300, 190, '#BFE0F0'); ell(x, 480, 380, 220, 130, '#CDE9F6'); ell(x, 480, 380, 120, 70, '#DDF1FA');
     ell(x, 480, 380, 26, 16, '#6B7276'); x.strokeStyle = '#2E9A58'; x.lineWidth = 34; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); x.moveTo(380, 560); x.lineTo(440, 620); x.lineTo(560, 480); x.stroke(); return c;
   }
+  var sampleArmed = false, sampleTimer = 0;
+  function hasWork() { return state.photos.length > 0 || state.site || state.worker || state.place || state.notes; }
   async function loadSample() {
     if (busy) { return; }
-    busy = true;
+    var sb = $('sample');
+    if (hasWork() && !sampleArmed) {
+      sampleArmed = true; sb.textContent = 'もう一度押すと、今の写真と入力がサンプルに置き換わります';
+      sampleTimer = setTimeout(function () { sampleArmed = false; sb.textContent = 'サンプルで試す（架空の絵6枚）'; }, 5000); return;
+    }
+    clearTimeout(sampleTimer); sampleArmed = false; sb.textContent = 'サンプルで試す（架空の絵6枚）';
+    setBusy(true);
+    try {
     var scenes = [whole(false), sceneDrainBefore(), scenePipe(), sceneNewFaucet(), sceneCheck(), whole(true)];
     var steps = ['着手前', '着手前', '作業中', '作業中', '完了', '完了'];
     var memos = ['洗面台 全景', '排水口まわり', '排水管の取り外し', '新しい水栓の取り付け', '排水の確認', '洗面台 全景'];
@@ -638,15 +653,16 @@
     state.date = '2026-10-03'; state.notes = '排水口まわりの部品を交換しました。水漏れのないことを確認済みです。';
     $('site').value = state.site; $('worker').value = state.worker; $('place').value = state.place; $('date').value = state.date; $('notes').value = state.notes;
     $('loadMsg').textContent = 'サンプル（すべて架空の絵）を入れました。'; $('loadMsg').className = 'msg ok';
-    busy = false; renderList(); renderPages();
+    } finally { setBusy(false); }
+    renderList(); renderPages();
   }
   $('sample').addEventListener('click', loadSample);
-  window.__loadSample = loadSample;
 
   /* ---------- 出力 ---------- */
   function outMsg(text, cls) { var m = $('outMsg'); m.textContent = text; m.className = 'msg' + (cls ? ' ' + cls : ''); }
   function checkReady() {
     if (!state.site.trim()) { $('site').classList.add('bad'); $('site').focus(); outMsg('現場名を入れてください。', 'err'); return false; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(state.date)) { $('date').focus(); outMsg('作業日を入れてください。', 'err'); return false; }
     if (!state.photos.length) { outMsg('写真を1枚以上選んでください。', 'err'); return false; }
     return true;
   }
@@ -654,7 +670,11 @@
     if (!checkReady()) { return; }
     clearTimeout(timer); renderPages();               /* 印刷は必ず今の入力から組み直す */
     outMsg('');
-    try { window.print(); } catch (e) { outMsg('印刷の画面を開けませんでした。「ページ画像を保存」を使ってください。', 'err'); }
+    var imgs = Array.prototype.slice.call(pagesEl.querySelectorAll('img.ph')).map(function (im) { return im.decode ? im.decode().catch(function () {}) : Promise.resolve(); });
+    var limit = new Promise(function (r) { setTimeout(r, 2500); });
+    Promise.race([Promise.all(imgs), limit]).then(function () {   /* 写真の読み込みが済んでから印刷を開く */
+      try { window.print(); } catch (e) { outMsg('印刷の画面を開けませんでした。「ページ画像を保存」を使ってください。', 'err'); }
+    });
   });
   if (IS_IOS) { $('iosNote').hidden = false; }
 
@@ -680,8 +700,13 @@
   }
   var savedFiles = [];
   function baseName() { return 'report-' + (state.date || todayStr()); }
+  function closeSavePanel() { $('savePanel').hidden = true; $('spBody').textContent = ''; savedFiles = []; }
   async function openSavePanel() {
-    if (!checkReady()) { return; }
+    if (saving || !checkReady()) { return; }
+    saving = true; $('saveBtn').disabled = true; var gen = saveGen;
+    try { await openSavePanelInner(gen); } finally { saving = false; if (!busy) { $('saveBtn').disabled = false; } }
+  }
+  async function openSavePanelInner(gen) {
     outMsg('ページ画像を作っています…');
     var layout = buildLayout(), body = $('spBody'); body.textContent = ''; savedFiles = [];
     var canShareFiles = false;
@@ -690,6 +715,7 @@
       var file = dataUrlToFile(url, baseName() + '-p' + (i + 1) + '.png');
       savedFiles.push({ file: file, url: url });
     }
+    if (gen !== saveGen) { outMsg('作っている間に内容が変わりました。もう一度「ページ画像を保存」を押してください。', 'err'); return; }
     try { canShareFiles = !!(navigator.canShare && savedFiles.length && navigator.canShare({ files: savedFiles.map(function (s) { return s.file; }) })); } catch (e) { canShareFiles = false; }
     var oneShare = false;
     try { oneShare = !!(navigator.canShare && navigator.canShare({ files: [savedFiles[0].file] })); } catch (e2) { oneShare = false; }
@@ -728,8 +754,7 @@
     var a = document.createElement('a'); a.href = s.url; a.download = s.file.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
   $('saveBtn').addEventListener('click', function () { openSavePanel().catch(function () { outMsg('ページ画像を作れませんでした。「印刷」から保存してください。', 'err'); }); });
-  $('spClose').addEventListener('click', function () { $('savePanel').hidden = true; $('spBody').textContent = ''; savedFiles = []; $('saveBtn').focus(); });
-  window.__makePagePngs = async function () { var l = buildLayout(), r = []; for (var i = 0; i < l.length; i++) { r.push(await drawPageToPng(l[i])); } return r; };
+  $('spClose').addEventListener('click', function () { closeSavePanel(); $('saveBtn').focus(); });
 
   /* ---------- 全部消す ---------- */
   function clearPhotos() { state.photos.forEach(function (p) { URL.revokeObjectURL(p.url); }); state.photos = []; }
@@ -747,7 +772,6 @@
 
   /* ---------- 起動 ---------- */
   state.date = todayStr(); $('date').value = state.date;
-  window.__state = state;
   renderList(); renderPages();
 })();
 </script>
